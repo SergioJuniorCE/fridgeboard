@@ -1,0 +1,71 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_URL: http://api:3001
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      api:
+        condition: service_started
+
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 3001
+      DB_HOST: db
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    env_file: .env
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-yoggan}
+      MARIADB_USER: ${DB_USER:-yoggan}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-yoggan}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me-root}
+    volumes:
+      - dbdata:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [web]
+
+  backup:
+    image: mariadb:11.4
+    restart: "no"
+    env_file: .env
+    volumes:
+      - dbdata:/var/lib/mysql:ro
+      - uploads:/uploads:ro
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c", "mariadb-dump -h db -u $${DB_USER} -p$${DB_PASSWORD} --single-transaction --quick --routines $${DB_NAME} | gzip > /backups/dump-$$(date +%F).sql.gz && tar -czf /backups/uploads-$$(date +%F).tar.gz /uploads && ls -t /backups/* | tail -n +15 | xargs -r rm --"]
+
+volumes:
+  dbdata:
+  uploads:

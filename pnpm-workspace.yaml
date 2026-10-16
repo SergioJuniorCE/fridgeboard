@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@astryxdesign/cli': true
+  '@astryxdesign/core': true
+  '@swc/core': true
+  esbuild: true
+  tesseract.js: true
