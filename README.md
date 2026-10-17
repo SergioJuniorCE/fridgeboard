@@ -24,6 +24,23 @@ pnpm dev               # web :3000, api :3001
 
 Migrations live in `packages/db/drizzle/` (generate: `pnpm --filter @yoggan/db db:generate`).
 
+## Household access
+
+Only the first account can register without an invitation and initialize the
+household as an Admin. Once that account exists, public account creation is
+closed, including through Google sign-in. Existing members can still log in.
+
+Admins create shareable invite links in Settings. New members open the link to
+create an account and join; existing accounts log in and return to the same
+invite. The link determines Adult or Minor membership and never grants Admin.
+Expired or fully used links cannot create accounts or memberships.
+
+Run `pnpm --filter @yoggan/api test:access` to test access rules and concurrent
+registration against a temporary MariaDB database cloned from the local schema.
+The test requires `TEST_DB_ROOT_PASSWORD` (or `DB_ROOT_PASSWORD`); with the local
+Compose database it can read the configured password from `yoggan-home-db-1`.
+It removes its temporary database after the run and leaves household data intact.
+
 ## Self-host
 
 ```bash

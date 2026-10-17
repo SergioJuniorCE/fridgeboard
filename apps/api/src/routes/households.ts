@@ -1,13 +1,26 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { Hono, type Context } from "hono";
-import { db, household } from "@yoggan/db";
+import { authSchema, db, household } from "@yoggan/db";
+import { createAuth } from "../auth.js";
 import { getEffectiveMember, getOwnMember, getSessionUserId, type Member } from "../lib/members.js";
+import {withBootstrapLock} from '../lib/bootstrap-lock.js';
+import {redeemInvite, registrationError} from '../lib/redeem-invite.js';
 
 // Slice 1: Household bootstrap + shareable invite links (Q21, Q30).
 // First signup creates the Household and becomes Admin Adult.
-// Others sign up, then redeem a link token to join. No SMTP for v1.
+// After bootstrap, signups are invite-only: newcomers redeem a link token
+// which creates their account AND their membership in one step. No SMTP for v1.
 export const householdsApp = new Hono();
+
+householdsApp.get('/setup', async c => {
+  const userId = await getSessionUserId(c);
+  if (!userId) return c.json({error: 'unauthorized'}, 401);
+  const [first] = await db.select({id: authSchema.user.id}).from(authSchema.user)
+    .orderBy(asc(authSchema.user.createdAt), asc(authSchema.user.id)).limit(1);
+  const [existing] = await db.select({id: household.households.id}).from(household.households).limit(1);
+  return c.json({allowed: first?.id === userId && !existing});
+});
 
 householdsApp.post("/", async (c) => {
   const userId = await getSessionUserId(c);
@@ -19,7 +32,13 @@ householdsApp.post("/", async (c) => {
   }
   const householdId = randomUUID();
   const memberId = randomUUID();
-  await db.transaction(async (tx) => {
+  await withBootstrapLock(lockedDatabase => lockedDatabase.transaction(async (tx) => {
+    const [firstUser] = await tx.select({id: authSchema.user.id}).from(authSchema.user)
+      .orderBy(asc(authSchema.user.createdAt), asc(authSchema.user.id)).limit(1);
+    const [existingHousehold] = await tx.select({id: household.households.id}).from(household.households).limit(1);
+    if (firstUser?.id !== userId || existingHousehold) {
+      throw registrationError(403, 'Only the first account can set up this household. Use an invite link to join.');
+    }
     await tx.insert(household.households).values({ id: householdId, name: name.trim() });
     await tx.insert(household.members).values({
       id: memberId,
@@ -46,7 +65,7 @@ householdsApp.post("/", async (c) => {
         amount: "0",
       })),
     );
-  });
+  }));
   return c.json(
     { household: { id: householdId, name: name.trim() }, member: { id: memberId, kind: "adult", isAdmin: 1 } },
     201,
@@ -55,40 +74,38 @@ householdsApp.post("/", async (c) => {
 
 householdsApp.post("/join", async (c) => {
   const userId = await getSessionUserId(c);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
-  if (await getOwnMember(userId)) return c.json({ error: "already in a household" }, 409);
-  const { token } = (await c.req.json().catch(() => ({}))) as { token?: unknown };
-  if (typeof token !== "string" || token.length === 0) {
-    return c.json({ error: "token is required" }, 400);
-  }
-  const links = await db
-    .select()
-    .from(household.inviteLinks)
-    .where(eq(household.inviteLinks.token, token))
-    .limit(1);
-  const link = links[0];
-  if (!link) return c.json({ error: "invalid link" }, 404);
-  if (link.expiresAt && link.expiresAt.getTime() < Date.now()) {
-    return c.json({ error: "link expired" }, 410);
-  }
-  if (link.maxUses !== null && link.usedCount >= link.maxUses) {
-    return c.json({ error: "link fully used" }, 410);
-  }
-  const memberId = randomUUID();
-  await db.transaction(async (tx) => {
-    await tx.insert(household.members).values({
-      id: memberId,
-      householdId: link.householdId,
-      userId,
-      kind: link.kind,
-      isAdmin: 0,
-    });
-    await tx
-      .update(household.inviteLinks)
-      .set({ usedCount: link.usedCount + 1 })
-      .where(eq(household.inviteLinks.id, link.id));
+  if (!userId) return c.json({error: "unauthorized"}, 401);
+  const {token} = await c.req.json().catch(() => ({})) as {token?: unknown};
+  if (typeof token !== "string" || !token.trim()) return c.json({error: "token is required"}, 400);
+  const {member} = await redeemInvite(token.trim(), async () => ({userId}));
+  return c.json({member}, 201);
+});
+
+householdsApp.post("/join-with-invite", async (c) => {
+  if (await getSessionUserId(c)) return c.json({error: "Use the join action for your signed-in account."}, 409);
+  const body = await c.req.json().catch(() => ({})) as {name?: unknown; email?: unknown; password?: unknown; token?: unknown};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  if (!name || name.length > 120) return c.json({error: "name is required (max 120 chars)"}, 400);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return c.json({error: "a valid email is required"}, 400);
+  if (password.length < 8 || password.length > 128) return c.json({error: "password must be 8-128 characters"}, 400);
+  if (!token) return c.json({error: "token is required"}, 400);
+
+  const {member, response} = await redeemInvite(token, async tx => {
+    const [taken] = await tx.select({id: authSchema.user.id}).from(authSchema.user)
+      .where(eq(authSchema.user.email, email)).limit(1);
+    if (taken) throw registrationError(409, "This email already has an account. Log in to accept your invite.");
+    const response = await createAuth(tx, email).api.signUpEmail({body: {name, email, password}, asResponse: true});
+    if (!response.ok) throw registrationError(400, "Could not create the account. Check your details and try again.");
+    const created = await response.json() as {user?: {id?: string}};
+    if (!created.user?.id) throw registrationError(500, "Could not create the account.");
+    return {userId: created.user.id, response};
   });
-  return c.json({ member: { id: memberId, kind: link.kind, householdId: link.householdId } }, 201);
+  const headers = new Headers({"Content-Type": "application/json"});
+  for (const cookie of response?.headers.getSetCookie() ?? []) headers.append("Set-Cookie", cookie);
+  return new Response(JSON.stringify({member}), {status: 201, headers});
 });
 
 async function requireAdmin(

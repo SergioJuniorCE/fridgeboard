@@ -3,7 +3,7 @@
 import {useEffect, useState, type CSSProperties} from 'react';
 import {useRouter} from 'next/navigation';
 import {Cog6ToothIcon, MagnifyingGlassIcon, PlusIcon} from '@heroicons/react/24/outline';
-import {VStack, HStack} from '@astryxdesign/core/Layout';
+import {VStack, HStack, StackItem} from '@astryxdesign/core/Layout';
 import {Grid} from '@astryxdesign/core/Grid';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
@@ -14,7 +14,7 @@ import {List, ListItem} from '@astryxdesign/core/List';
 import {authClient} from '@/lib/auth-client';
 import {Clock, useClock} from '@/components/dashboard/clock';
 import {useDashboard} from '@/components/dashboard/use-dashboard';
-import {WeatherPanel} from '@/components/dashboard/weather-panel';
+import {WeatherNow, WeatherRest} from '@/components/dashboard/weather-panel';
 import {NextUp, WeekAhead} from '@/components/dashboard/day-panels';
 import {Schedule} from '@/components/dashboard/schedule';
 import {BudgetPanel, ShoppingSummary} from '@/components/dashboard/summary-panels';
@@ -49,21 +49,24 @@ export default function Home() {
   const foundEvents = searching ? (data.events ?? []).filter(event => event.title.toLocaleLowerCase().includes(q)).slice(0, 4) : [];
 
   return <VStack gap={6} hAlign="stretch" style={{width: '100%', maxWidth: 'var(--home-max-width)', marginInline: 'auto', padding: 'var(--home-padding)', minWidth: 0}}>
-    <HStack justify="between" vAlign="center" gap={3}>
-      <VStack gap={1}>
-        <Text as="h1" style={{fontSize: 'var(--font-size-sm)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em'}}>Yoggan Home</Text>
-        <Text type="supporting" color="secondary">A good day starts together.</Text>
-      </VStack>
+    <HStack justify="end" vAlign="center" gap={3}>
       <HStack gap={2} vAlign="center">
         <Button label="Quick add" variant="ghost" size="sm" icon={<PlusIcon width="var(--spacing-4)" />} onClick={() => setQuickAdd(true)} />
         <IconButton label="Household settings" tooltip="Household settings" variant="ghost" icon={<Icon icon={Cog6ToothIcon} />} onClick={() => router.push('/settings')} />
       </HStack>
     </HStack>
 
-    <Grid gap={6} style={{gridTemplateColumns: 'var(--home-header-columns)', ...rule, paddingBottom: 'var(--spacing-6)'}}>
-      <Clock />
-      <WeatherPanel weather={data.weather} state={data.weatherState} />
-      <VStack gap={3} style={{display: 'var(--home-context-display)', minWidth: 0}}>
+    <Grid gap={4} style={{gridTemplateColumns: 'var(--home-header-columns)', gridTemplateAreas: 'var(--home-header-areas)', ...rule, paddingBottom: 'var(--spacing-6)'}}>
+      <StackItem style={{gridArea: 'clock', minWidth: 0}}>
+        <Clock />
+      </StackItem>
+      <StackItem style={{gridArea: 'now', alignSelf: 'start', minWidth: 0}}>
+        <WeatherNow weather={data.weather} state={data.weatherState} />
+      </StackItem>
+      <StackItem style={{gridArea: 'rest', minWidth: 0}}>
+        <WeatherRest weather={data.weather} state={data.weatherState} />
+      </StackItem>
+      <StackItem style={{gridArea: 'people', display: 'var(--home-context-display)', minWidth: 0}}>
         <HStack justify="between" style={{marginBottom: 'var(--spacing-3)'}}><Eyebrow>Our household</Eyebrow><Text type="supporting" color="secondary">{members.length} {members.length === 1 ? 'member' : 'members'}</Text></HStack>
         <VStack gap={2}>
           {members.slice(0, 4).map((member, index) => <HStack key={member.id} gap={3} vAlign="center">
@@ -73,7 +76,7 @@ export default function Home() {
           </HStack>)}
           {members.length > 4 && <Button label={`+${members.length - 4} more members`} href="/settings" variant="ghost" size="sm" />}
         </VStack>
-      </VStack>
+      </StackItem>
     </Grid>
 
     <Grid gap={5} style={{gridTemplateColumns: 'var(--home-main-columns)'}}>

@@ -8,4 +8,5 @@ backups/
 .env
 .env.local
 apps/web/.next/
+apps/web/.next-*/
 apps/web/next-env.d.ts

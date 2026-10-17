@@ -10,6 +10,7 @@ import {Text, Heading} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {Button} from '@astryxdesign/core/Button';
 import {Section} from '@astryxdesign/core/Section';
+import {Link} from '@astryxdesign/core/Link';
 import {RadioList, RadioListItem} from '@astryxdesign/core/RadioList';
 import {authClient} from '@/lib/auth-client';
 import {
@@ -147,7 +148,7 @@ export default function SettingsPage() {
         `/api/households/${me.householdId}/invites`,
         {kind: inviteKind, maxUses: null, expiresInDays: 30},
       );
-      setNewToken(invite.token);
+      setNewToken(new URL(`/join?token=${encodeURIComponent(invite.token)}`, window.location.origin).href);
       const {invites: invs} = await api.get<{invites: Invite[]}>(
         `/api/households/${me.householdId}/invites`,
       );
@@ -265,9 +266,14 @@ export default function SettingsPage() {
               </RadioList>
               <Button label="Create invite link" variant="secondary" size="lg" onClick={createInvite} />
               {newToken && (
-                <Text type="body" size="sm">
-                  New link: /join?token={newToken}
-                </Text>
+                  <VStack gap={2}>
+                    <Link href={newToken} style={{overflowWrap: 'anywhere'}}>Open invite link</Link>
+                    <TextInput label="Invite link" value={newToken} isReadOnly width="100%" />
+                    <Button label="Copy invite link" variant="secondary" onClick={async () => {
+                      try {await navigator.clipboard.writeText(newToken); setNotice('Invite link copied.');}
+                      catch {setNotice('Copy the link from the field above.');}
+                    }} />
+                  </VStack>
               )}
               {invites.map((inv) => (
                 <Text key={inv.id} type="supporting" color="secondary">

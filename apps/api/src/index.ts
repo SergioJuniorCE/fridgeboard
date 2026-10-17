@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { authSchema, db } from "@yoggan/db";
 import { auth } from "./auth.js";
 import { householdsApp } from "./routes/households.js";
 import { membersApp } from "./routes/members.js";
@@ -22,6 +23,16 @@ app.use(
 );
 
 app.get("/health", (c) => c.json({ ok: true, service: "yoggan-api" }));
+
+// Public: is open signup still available? Only before the first user exists.
+app.get("/api/auth/bootstrap", async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const existing = await db
+    .select({ id: authSchema.user.id })
+    .from(authSchema.user)
+    .limit(1);
+  return c.json({ open: existing.length === 0 });
+});
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 

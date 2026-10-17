@@ -15,6 +15,7 @@ import {Divider} from '@astryxdesign/core/Divider';
 import {Icon} from '@astryxdesign/core/Icon';
 import {authClient} from '@/lib/auth-client';
 import {api, type DisplayMember} from '@/lib/api';
+import {inviteToken} from '@/lib/invite-token';
 
 const pageStyle: CSSProperties = {
   minHeight: '100%',
@@ -29,6 +30,7 @@ export default function WelcomePage() {
   const router = useRouter();
   const {data: session, isPending} = authClient.useSession();
   const [checking, setChecking] = useState(true);
+  const [canSetup, setCanSetup] = useState(false);
   const [householdName, setHouseholdName] = useState('');
   const [token, setToken] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -42,11 +44,21 @@ export default function WelcomePage() {
     }
     api
       .get<{members: DisplayMember[]}>('/api/members')
-      .then(({members}) => {
+      .then(async ({members}) => {
         if (members.length > 0) router.replace('/');
-        else setChecking(false);
+        else {
+          const {allowed} = await api.get<{allowed: boolean}>('/api/households/setup');
+          setCanSetup(allowed);
+          setChecking(false);
+        }
       })
-      .catch(() => setChecking(false));
+      .catch(async () => {
+        try {
+          const {allowed} = await api.get<{allowed: boolean}>('/api/households/setup');
+          setCanSetup(allowed);
+        } catch {setErrorMessage('Could not check household setup. Please refresh and try again.');}
+        setChecking(false);
+      });
   }, [isPending, session, router]);
 
   const handleCreate = async () => {
@@ -73,7 +85,8 @@ export default function WelcomePage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const clean = token.trim().split('token=')[1] ?? token.trim();
+      const clean = inviteToken(token);
+      if (!clean) {setErrorMessage('Paste a valid invite link or token.'); setIsLoading(false); return;}
       await api.post('/api/households/join', {token: clean});
       router.push('/');
     } catch {
@@ -105,19 +118,20 @@ export default function WelcomePage() {
         <Card padding={8} width="100%">
           <VStack gap={4} hAlign="stretch">
             <VStack gap={1} hAlign="center">
-              <Heading level={2}>Set up your household</Heading>
+              <Heading level={2}>{canSetup ? 'Set up your household' : 'Join your household'}</Heading>
               <Text type="body" color="secondary" size="sm">
-                Create one, or join with a link
+                {canSetup ? 'Create your household, then invite everyone else.' : 'Ask an Admin for an invite link to continue.'}
               </Text>
             </VStack>
 
-            <VStack gap={2}>
+            {canSetup && <VStack gap={2}>
               <TextInput
                 label="Household name"
                 isLabelHidden
                 placeholder="e.g. The Millers"
                 value={householdName}
                 onChange={setHouseholdName}
+                onEnter={handleCreate}
                 size="lg"
               />
               <Button
@@ -127,9 +141,9 @@ export default function WelcomePage() {
                 isLoading={isLoading}
                 onClick={handleCreate}
               />
-            </VStack>
+            </VStack>}
 
-            <Divider label="Or join" />
+            {canSetup && <Divider label="Or join" />}
 
             <VStack gap={2}>
               <TextInput
@@ -138,6 +152,7 @@ export default function WelcomePage() {
                 placeholder="Paste invite link or token"
                 value={token}
                 onChange={setToken}
+                onEnter={handleJoin}
                 size="lg"
                 status={
                   errorMessage

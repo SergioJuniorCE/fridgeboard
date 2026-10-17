@@ -1,7 +1,8 @@
 // Login page scaffolded from the login-card template (kept frame, gap, padding).
 'use client';
 
-import {useState, type CSSProperties} from 'react';
+import {Suspense, useEffect, useState, type CSSProperties} from 'react';
+import {useSearchParams} from 'next/navigation';
 import {CubeIcon} from '@heroicons/react/24/outline';
 import {VStack} from '@astryxdesign/core/Layout';
 import {Center} from '@astryxdesign/core/Center';
@@ -13,6 +14,7 @@ import {Link} from '@astryxdesign/core/Link';
 import {Divider} from '@astryxdesign/core/Divider';
 import {Icon} from '@astryxdesign/core/Icon';
 import {authClient} from '@/lib/auth-client';
+import {api} from '@/lib/api';
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -53,7 +55,14 @@ const contentStyle: CSSProperties = {
   maxWidth: 400,
 };
 
-export default function LoginPage() {
+function LoginForm() {
+  const params = useSearchParams();
+  const returnTo = params.get('returnTo');
+  const destination = returnTo?.startsWith('/join?') ? returnTo : '/';
+  const [bootstrap, setBootstrap] = useState(false);
+  useEffect(() => {
+    api.get<{open: boolean}>('/api/auth/bootstrap').then(({open}) => setBootstrap(open)).catch(() => setBootstrap(false));
+  }, []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -73,11 +82,12 @@ export default function LoginPage() {
       return;
     }
     // Full reload so the session cookie is in place before the home gate runs.
-    window.location.assign('/');
+    window.location.assign(destination);
   };
 
   const handleGoogle = async () => {
-    await authClient.signIn.social({provider: 'google', callbackURL: '/'});
+    const {error} = await authClient.signIn.social({provider: 'google', callbackURL: destination});
+    if (error) setErrorMessage(error.message ?? 'Google sign-in could not be started.');
   };
 
   return (
@@ -111,6 +121,7 @@ export default function LoginPage() {
                 placeholder="you@home.com"
                 value={email}
                 onChange={setEmail}
+                onEnter={handleLogin}
                 size="lg"
               />
               <TextInput
@@ -119,6 +130,7 @@ export default function LoginPage() {
                 placeholder="Enter your password"
                 type="password"
                 value={password}
+                onEnter={handleLogin}
                 onChange={(v: string) => {
                   setPassword(v);
                   setErrorMessage(null);
@@ -161,9 +173,9 @@ export default function LoginPage() {
             {/* Sign up link */}
             <VStack hAlign="center">
               <Text type="supporting" color="secondary">
-                Don&apos;t have an account?{' '}
-                <Link href="/signup" type="supporting">
-                  Sign up
+                {bootstrap ? 'First time here? ' : 'Got an invite link? '}
+                <Link href={bootstrap ? '/signup' : destination === '/' ? '/join' : destination} type="supporting">
+                  {bootstrap ? 'Set up Yoggan Home' : 'Join your household'}
                 </Link>
               </Text>
             </VStack>
@@ -172,4 +184,8 @@ export default function LoginPage() {
       </VStack>
     </Center>
   );
+}
+
+export default function LoginPage() {
+  return <Suspense><LoginForm /></Suspense>;
 }

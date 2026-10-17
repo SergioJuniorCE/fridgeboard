@@ -1,7 +1,7 @@
 // Signup page: same login-card frame, creates the Better Auth account.
 'use client';
 
-import {useState, type CSSProperties} from 'react';
+import {useEffect, useState, type CSSProperties} from 'react';
 import {CubeIcon} from '@heroicons/react/24/outline';
 import {VStack} from '@astryxdesign/core/Layout';
 import {Center} from '@astryxdesign/core/Center';
@@ -12,6 +12,7 @@ import {Card} from '@astryxdesign/core/Card';
 import {Link} from '@astryxdesign/core/Link';
 import {Icon} from '@astryxdesign/core/Icon';
 import {authClient} from '@/lib/auth-client';
+import {api} from '@/lib/api';
 
 const pageStyle: CSSProperties = {
   minHeight: '100%',
@@ -28,6 +29,15 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [bootstrap, setBootstrap] = useState<boolean | null>(null);
+
+  // Open signup exists only for the first user ever; everyone else is invite-only.
+  useEffect(() => {
+    api
+      .get<{open: boolean}>('/api/auth/bootstrap')
+      .then(({open}) => setBootstrap(open))
+      .catch(() => setBootstrap(false));
+  }, []);
 
   const handleSignup = async () => {
     if (!name.trim() || !email || password.length < 8) {
@@ -39,12 +49,46 @@ export default function SignupPage() {
     const {error} = await authClient.signUp.email({name: name.trim(), email, password});
     setIsLoading(false);
     if (error) {
-      setErrorMessage('Could not create the account. Try another email.');
+      setErrorMessage('Setup could not be completed. If the first account already exists, use an invite link instead.');
       return;
     }
     // Full reload so the session cookie is in place before the welcome gate runs.
     window.location.assign('/welcome');
   };
+
+  if (bootstrap === null) {
+    return (
+      <Center axis="both" padding={6} style={pageStyle}>
+        <Text type="body" color="secondary">
+          Loading…
+        </Text>
+      </Center>
+    );
+  }
+
+  if (!bootstrap) {
+    return (
+      <Center axis="both" padding={6} style={pageStyle}>
+        <VStack gap={4} hAlign="center" style={contentStyle}>
+          <Card padding={8} width="100%">
+            <VStack gap={4} hAlign="center">
+              <Heading level={2}>Invite only</Heading>
+              <Text type="body" color="secondary" size="sm">
+                This household grows by invite link only. Ask an Admin for one, then join.
+              </Text>
+              <Button label="I have a link" variant="primary" size="lg" onClick={() => window.location.assign('/join')} />
+              <Text type="supporting" color="secondary">
+                Already have an account?{' '}
+                <Link href="/login" type="supporting">
+                  Log in
+                </Link>
+              </Text>
+            </VStack>
+          </Card>
+        </VStack>
+      </Center>
+    );
+  }
 
   return (
     <Center axis="both" padding={6} style={pageStyle}>
@@ -59,9 +103,9 @@ export default function SignupPage() {
         <Card padding={8} width="100%">
           <VStack gap={4} hAlign="stretch">
             <VStack gap={1} hAlign="center">
-              <Heading level={2}>Create your account</Heading>
+              <Heading level={2}>Set up Yoggan Home</Heading>
               <Text type="body" color="secondary" size="sm">
-                First up — who is this?
+                Create the first account. Everyone else will join by invitation.
               </Text>
             </VStack>
 
@@ -72,6 +116,7 @@ export default function SignupPage() {
                 placeholder="Your name"
                 value={name}
                 onChange={setName}
+                onEnter={handleSignup}
                 size="lg"
               />
               <TextInput
@@ -81,6 +126,7 @@ export default function SignupPage() {
                 placeholder="you@home.com"
                 value={email}
                 onChange={setEmail}
+                onEnter={handleSignup}
                 size="lg"
               />
               <TextInput
@@ -89,6 +135,7 @@ export default function SignupPage() {
                 placeholder="Password (8+ characters)"
                 type="password"
                 value={password}
+                onEnter={handleSignup}
                 onChange={(v: string) => {
                   setPassword(v);
                   setErrorMessage(null);
@@ -106,7 +153,7 @@ export default function SignupPage() {
             </VStack>
 
             <Button
-              label="Sign up"
+              label="Create first account"
               variant="primary"
               size="lg"
               isLoading={isLoading}

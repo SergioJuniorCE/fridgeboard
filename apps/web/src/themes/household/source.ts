@@ -43,14 +43,28 @@ export const householdTheme = defineTheme({
     '--home-teal-soft': ['#d5eeeb', '#173f43'],
     '--home-gold': ['#87630c', '#edcc6c'],
     '--home-gold-soft': ['#f4ebd1', '#443d27'],
+    // Calendar timeline: the time axis geometry lives in the theme so every
+    // event offset can be computed from the same source (see /calendar).
+    '--home-hour-height': '56px',
+    '--home-day-column-min': '104px',
+    '--home-event-dark': ['#111111', '#f4f9fc'],
+    '--home-event-text': ['#f4f9fc', '#111111'],
     '--home-serif': 'var(--font-household-serif), Georgia, serif',
     '--home-numbers': 'var(--font-household-sans), Impact, sans-serif',
     '--home-weather-size': '64px',
+    '--home-weather-icon': 'var(--spacing-10)',
+    // Current conditions sit in a row beside the clock in landscape.
+    '--home-now-direction': 'row',
+    '--home-now-align': 'center',
+    '--home-now-detail-max': 'none',
     '--home-clock-size': 'clamp(5.5rem, 9.6vw, 9rem)',
     '--home-heading-size': 'clamp(2.5rem, 4.2vw, 4.5rem)',
     '--home-padding': 'clamp(1.5rem, 3vw, 3rem)',
     '--home-max-width': '1600px',
     '--home-header-columns': '1fr 1.15fr 0.9fr',
+    // Header cells are named so the current conditions can move per layout:
+    // beside the clock in landscape, top right of it in portrait.
+    '--home-header-areas': '"clock now people" "clock rest people"',
     '--home-main-columns': 'minmax(0, 1.8fr) minmax(0, 1fr)',
     '--home-summary-columns': 'repeat(2, minmax(0, 1fr))',
     '--home-rail-width': '88px',
@@ -75,6 +89,7 @@ export const householdTheme = defineTheme({
         when: {width: {below: 'lg'}},
         value: {localTokens: {
           '--home-header-columns': '1fr 1fr',
+          '--home-header-areas': '"clock now" "clock rest"',
           '--home-main-columns': 'minmax(0, 1.4fr) minmax(0, 1fr)',
           '--home-clock-size': '6.5rem',
           '--home-context-display': 'none',
@@ -84,7 +99,15 @@ export const householdTheme = defineTheme({
       {
         when: {width: {below: 'md'}},
         value: {localTokens: {
-          '--home-header-columns': '1fr',
+          // Portrait: the clock keeps its natural width and the current
+          // conditions sit at its top right, detail stacked under the reading.
+          '--home-header-columns': 'auto minmax(0, 1fr)',
+          '--home-header-areas': '"clock now" "rest rest"',
+          '--home-weather-size': '2.75rem',
+          '--home-weather-icon': 'var(--spacing-6)',
+          '--home-now-direction': 'column',
+          '--home-now-align': 'end',
+          '--home-now-detail-max': '8.5rem',
           '--home-main-columns': '1fr',
           '--home-rail-space': '0px',
           '--home-rail-display': 'none',
